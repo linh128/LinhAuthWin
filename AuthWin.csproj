@@ -107,6 +107,14 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="VaultPasswordWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="VaultWorkWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
@@ -117,6 +125,13 @@
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="VaultPasswordWindow.xaml.cs">
+      <DependentUpon>VaultPasswordWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="VaultStorage.cs" />
+    <Compile Include="VaultWorkWindow.xaml.cs">
+      <DependentUpon>VaultWorkWindow.xaml</DependentUpon>
     </Compile>
   </ItemGroup>
   <ItemGroup>

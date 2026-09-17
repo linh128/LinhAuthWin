@@ -38,6 +38,7 @@ D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.g.resources
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.Properties.Resources.resources
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.csproj.GenerateResource.cache
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.csproj.CoreCompileInputs.cache
-D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.csproj.CopyComplete
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.exe
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.pdb
+D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.exe.config
+D:\OneDrive\Products\AuthWin\AuthWin\obj\Release\AuthWin.csproj.Up2Date

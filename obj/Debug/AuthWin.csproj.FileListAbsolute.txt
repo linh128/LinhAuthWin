@@ -75,9 +75,14 @@ D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.g.resources
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.Properties.Resources.resources
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.csproj.GenerateResource.cache
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.csproj.CoreCompileInputs.cache
-D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.csproj.CopyComplete
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.exe
 D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.pdb
 D:\OneDrive\Products\AuthWin\AuthWin\bin\Debug\Google.Protobuf.dll
 D:\OneDrive\Products\AuthWin\AuthWin\bin\Debug\Google.Protobuf.pdb
 D:\OneDrive\Products\AuthWin\AuthWin\bin\Debug\Google.Protobuf.xml
+D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.exe.config
+D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\AuthWin.csproj.Up2Date
+D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\VaultPasswordWindow.baml
+D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\VaultWorkWindow.baml
+D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\VaultPasswordWindow.g.cs
+D:\OneDrive\Products\AuthWin\AuthWin\obj\Debug\VaultWorkWindow.g.cs

@@ -27,6 +27,7 @@ using QRCoder;
 using Microsoft.Win32;
 using ZXing;
 using System.Security.Principal;
+using System.Security.Cryptography;
 using System.Web;
 using static QRCoder.QRCodeGenerator;
 
@@ -40,7 +41,8 @@ namespace AuthWin
         ObservableCollection<Account> accounts = new ObservableCollection<Account>();
         DispatcherTimer timer = new DispatcherTimer();
         DispatcherTimer timer2 = new DispatcherTimer();
-        string EncPassword = "0297D45A92EC5382428A1E387FEDC12DE0BBD0DA54E20D9E37D64CD170A5BFC1";
+        DispatcherTimer secretCopiedTimer = new DispatcherTimer();
+        VaultSession vaultSession;
         System.Drawing.Bitmap qrCodeImage;
         bool EditMode = false;
         int EditIndex = -1;
@@ -49,20 +51,41 @@ namespace AuthWin
         public MainWindow()
         {
             InitializeComponent();
+            secretCopiedTimer.Interval = TimeSpan.FromSeconds(2);
+            secretCopiedTimer.Tick += secretCopiedTimer_Tick;
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            vaultSession?.Dispose();
+            base.OnClosed(e);
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            if (!System.IO.Directory.Exists(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\AuthWin")) {
-                System.IO.Directory.CreateDirectory(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\AuthWin");
+            Hide();
+            try
+            {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(AccounsFile));
+                if (!InitializeVault())
+                {
+                    Close();
+                    return;
+                }
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Could not open the account file. No data was changed.\n\n" + ex.Message,
+                    "AuthWin", MessageBoxButton.OK, MessageBoxImage.Error);
+                Close();
+                return;
+            }
+            Show();
 
-            ReadJson();
             for (int i = 0; i < accounts.Count; i++)
             {
                 Account acc = accounts[i];
-                GenerateCode(ref acc);
-                accounts[i] = acc;
+                GenerateCode(acc);
             }
             lbCodes.ItemsSource = accounts;
             timer.Tick += timer_Tick;
@@ -81,6 +104,9 @@ namespace AuthWin
             grdAddButtons.Visibility = Visibility.Visible;
 
             txtSecret.IsEnabled = true;
+            secretCopiedTimer.Stop();
+            txtSecret.Background = null;
+            btnCopySecret.Visibility = Visibility.Collapsed;
             txtDuration.IsEnabled = true;
             txtLength.IsEnabled = true;
             cmbAlgo.IsEnabled = true;
@@ -165,7 +191,7 @@ namespace AuthWin
             }
             else
             {
-                account.Secret = txtSecret.Text.Trim();
+                account.Secret = txtSecret.Text.Trim().Replace(" ","");
                 txtSecret.Background = null;
             }
 
@@ -192,7 +218,7 @@ namespace AuthWin
 
             if (OK)
             {
-                GenerateCode(ref account);
+                GenerateCode(account);
                 account.Id = accounts.Count;
                 accounts.Add(account);
                 WriteJson();
@@ -224,7 +250,7 @@ namespace AuthWin
                 return false;
         }
 
-        private void GenerateCode(ref Account acc)
+        private void GenerateCode(Account acc)
         {
             var base32Bytes = Base32Encoding.ToBytes(acc.Secret);
             var totp = new Totp(base32Bytes, acc.Duration, (OtpHashMode)Enum.ToObject(typeof(OtpHashMode), acc.HashAlgo), acc.Length);
@@ -242,18 +268,13 @@ namespace AuthWin
 
         private void timer_Tick(object sender, EventArgs e)
         {
-            for (int i = 0; i < accounts.Count; i++)
+            foreach (Account acc in accounts)
             {
-                if (accounts[i].Seconds > 1)
-                    accounts[i].Seconds--;
+                if (acc.Seconds > 1)
+                    acc.Seconds--;
                 else
-                {
-                    Account acc = accounts[i];
-                    GenerateCode(ref acc);
-                    accounts[i] = acc;
-                }
+                    GenerateCode(acc);
             }
-            lbCodes.Items.Refresh();
         }
 
         private void timer2_Tick(object sender, EventArgs e)
@@ -268,36 +289,107 @@ namespace AuthWin
         {
             var opt = new JsonSerializerOptions() { WriteIndented = true };
             string jsonString = JsonSerializer.Serialize(accounts, opt);
-            string encJson = EncDec.Encrypt(jsonString, EncPassword);
-            using (StreamWriter sw = new StreamWriter(AccounsFile))
-            {
-                sw.Write(encJson);
-                sw.Close();
-            }
+            VaultSession.Save(AccounsFile, vaultSession, jsonString);
         }
 
-        private void ReadJson()
+        private bool InitializeVault()
         {
-            try
+            if (!File.Exists(AccounsFile))
             {
-                if (System.IO.File.Exists(AccounsFile))
+                var dialog = new VaultPasswordWindow(true);
+                if (dialog.ShowDialog() != true) return false;
+                string password = dialog.Password;
+                VaultSession session = VaultWorkWindow.Run("Creating your account file...", () =>
                 {
-                    using (StreamReader sr = new StreamReader(AccounsFile))
+                    VaultSession created = VaultSession.Create(password);
+                    try
                     {
-                        string encString = sr.ReadToEnd();
-                        string jsonString = EncDec.Decrypt(encString, EncPassword).Trim('\0');
-                        accounts = JsonSerializer.Deserialize<ObservableCollection<Account>>(jsonString);
-                        for (int i = 0; i < accounts.Count; i++)
-                        {
-                            accounts[i].Id = i;
-                        }
+                        VaultSession.Save(AccounsFile, created, JsonSerializer.Serialize(accounts));
+                        return created;
                     }
+                    catch
+                    {
+                        created.Dispose();
+                        throw;
+                    }
+                });
+                vaultSession = session;
+                return true;
+            }
+
+            string contents = File.ReadAllText(AccounsFile);
+            if (contents.TrimStart().StartsWith("{"))
+            {
+                string unlockError = null;
+                while (true)
+                {
+                    var dialog = new VaultPasswordWindow(false, false, unlockError);
+                    if (dialog.ShowDialog() != true) return false;
+                    string password = dialog.Password;
+                    var opened = VaultWorkWindow.Run("Unlocking your accounts...", () =>
+                    {
+                        string json;
+                        VaultSession session;
+                        bool matched = VaultSession.TryUnlock(contents, password, out session, out json);
+                        return Tuple.Create(matched, session, json);
+                    });
+                    if (!opened.Item1)
+                    {
+                        unlockError = "Incorrect password or damaged account file. Please try again.";
+                        continue;
+                    }
+                    var loaded = JsonSerializer.Deserialize<ObservableCollection<Account>>(opened.Item3);
+                    if (loaded == null) throw new InvalidDataException("The account data is invalid.");
+                    accounts = loaded;
+                    vaultSession = opened.Item2;
+                    try
+                    {
+                        VaultSession.RemoveCompletedMigrationBackups(AccounsFile);
+                    }
+                    catch (IOException)
+                    {
+                        MessageBox.Show("A legacy migration backup could not be removed. Please check the AuthWin folder in AppData.",
+                            "AuthWin", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        MessageBox.Show("A legacy migration backup could not be removed. Please check the AuthWin folder in AppData.",
+                            "AuthWin", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    break;
                 }
             }
-            catch
+            else
             {
-                MessageBox.Show("Data seems corrupted!", "AuthWin", MessageBoxButton.OK, MessageBoxImage.Error);
+                // This key is used only to read files created by older AuthWin versions.
+                const string legacyKey = "0297D45A92EC5382428A1E387FEDC12DE0BBD0DA54E20D9E37D64CD170A5BFC1";
+                string json = EncDec.Decrypt(contents, legacyKey).Trim('\0');
+                var loaded = JsonSerializer.Deserialize<ObservableCollection<Account>>(json);
+                if (loaded == null) throw new InvalidDataException("The legacy account data is invalid.");
+
+                var dialog = new VaultPasswordWindow(true, true);
+                if (dialog.ShowDialog() != true) return false;
+                string password = dialog.Password;
+                VaultSession session = VaultWorkWindow.Run("Protecting your existing accounts...", () =>
+                {
+                    VaultSession created = VaultSession.Create(password);
+                    try
+                    {
+                        VaultSession.Save(AccounsFile, created, json, true);
+                        return created;
+                    }
+                    catch
+                    {
+                        created.Dispose();
+                        throw;
+                    }
+                });
+                accounts = loaded;
+                vaultSession = session;
             }
+
+            for (int i = 0; i < accounts.Count; i++) accounts[i].Id = i;
+            return true;
         }
 
         private void lbCodes_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -363,11 +455,14 @@ namespace AuthWin
             txtName.Text = accounts[i].Name;
             txtIssuer.Text = accounts[i].Issuer;
             txtSecret.Text = accounts[i].Secret;
+            secretCopiedTimer.Stop();
+            txtSecret.Background = null;
             txtDuration.Text = accounts[i].Duration.ToString();
             txtLength.Text = accounts[i].Length.ToString();
             cmbAlgo.SelectedIndex = (int)accounts[i].HashAlgo;
 
             txtSecret.IsEnabled = false;
+            btnCopySecret.Visibility = Visibility.Visible;
             txtDuration.IsEnabled = false;
             txtLength.IsEnabled = false;
             cmbAlgo.IsEnabled = false;
@@ -375,6 +470,20 @@ namespace AuthWin
             btnEditAccount.Visibility = Visibility.Visible;
 
             grdManual.Visibility = Visibility.Visible;
+        }
+
+        private void btnCopySecret_Click(object sender, RoutedEventArgs e)
+        {
+            Clipboard.SetText(txtSecret.Text);
+            txtSecret.Background = Brushes.LightGreen;
+            secretCopiedTimer.Stop();
+            secretCopiedTimer.Start();
+        }
+
+        private void secretCopiedTimer_Tick(object sender, EventArgs e)
+        {
+            secretCopiedTimer.Stop();
+            txtSecret.Background = null;
         }
 
         private void Delete_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -480,7 +589,7 @@ namespace AuthWin
                         }
 
                         acc.Id = accounts.Count;
-                        GenerateCode(ref acc);
+                        GenerateCode(acc);
                         accounts.Add(acc);
                         WriteJson();
 
@@ -508,7 +617,7 @@ namespace AuthWin
                                     if (payload.OtpParameters[i].Digits == 2) acc.Length = 8;
 
                                     acc.Id = accounts.Count;
-                                    GenerateCode(ref acc);
+                                    GenerateCode(acc);
                                     accounts.Add(acc);
                                 }
                                 WriteJson();
@@ -539,13 +648,28 @@ namespace AuthWin
 
         private void btnExport_Click(object sender, RoutedEventArgs e)
         {
-            if (pnlExport.Visibility == Visibility.Collapsed)
+            pnlImport.Visibility = Visibility.Collapsed;
+            SaveFileDialog sfd = new SaveFileDialog();
+            sfd.FileName = "Accounts.json";
+            sfd.AddExtension = true;
+            sfd.Filter = "JSON File|*.json";
+            if (sfd.ShowDialog() == true)
             {
-                pnlExport.Visibility = Visibility.Visible;
-                pnlImport.Visibility = Visibility.Collapsed;
-            }
-            else {
-                pnlExport.Visibility = Visibility.Collapsed;
+                try
+                {
+                    if (!string.Equals(System.IO.Path.GetFullPath(sfd.FileName),
+                        System.IO.Path.GetFullPath(AccounsFile), StringComparison.OrdinalIgnoreCase))
+                    {
+                        File.Copy(AccounsFile, sfd.FileName, true);
+                    }
+                    MessageBox.Show("Encrypted accounts exported. Keep the vault password safe!", "AuthWin",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Could not export accounts.\n\n" + ex.Message, "AuthWin",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
 
@@ -554,7 +678,6 @@ namespace AuthWin
             if (pnlImport.Visibility == Visibility.Collapsed)
             {
                 pnlImport.Visibility = Visibility.Visible;
-                pnlExport.Visibility = Visibility.Collapsed;
             }
             else {
                 pnlImport.Visibility = Visibility.Collapsed;
@@ -595,45 +718,6 @@ namespace AuthWin
             System.Diagnostics.Process.Start("https://authwin.com");
         }
 
-        private void chkExportPass_Checked(object sender, RoutedEventArgs e)
-        {
-            txtExportPass.Visibility = Visibility.Visible;
-            txtExportPass.Focus();
-        }
-
-        private void chkExportPass_Unchecked(object sender, RoutedEventArgs e)
-        {
-            txtExportPass.Visibility = Visibility.Hidden;
-        }
-
-        private void btnExportFinal_Click(object sender, RoutedEventArgs e)
-        {
-            SaveFileDialog sfd = new SaveFileDialog();
-            sfd.FileName = "Accounts.json";
-            sfd.AddExtension = true;
-            sfd.Filter = "JSON File|*.json";
-            if (sfd.ShowDialog() == true)
-            {
-                var opt = new JsonSerializerOptions() { WriteIndented = true };
-                string jsonString = JsonSerializer.Serialize(accounts, opt);
-                using (StreamWriter sw = new StreamWriter(sfd.FileName))
-                {
-                    if (chkExportPass.IsChecked == true && !String.IsNullOrEmpty(txtExportPass.Text)) {
-                        string PassHash = EncDec.Sha256(txtExportPass.Text.Trim());
-                        string Encoded = EncDec.Encrypt(jsonString, PassHash);
-                        sw.Write(Encoded);
-                    }
-                    else {
-                        sw.Write(jsonString);
-                    }
-                    sw.Close();
-                }
-                MessageBox.Show("Accounts exported, keep it safe!", "AuthWin", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            sfd = null;
-            pnlExport.Visibility = Visibility.Collapsed;
-        }
-
         private void btnImportFinal_Click(object sender, RoutedEventArgs e)
         {
             OpenFileDialog ofd = new OpenFileDialog();
@@ -642,33 +726,68 @@ namespace AuthWin
             {
                 try
                 {
-                    using (StreamReader sr = new StreamReader(ofd.FileName))
+                    string fileContents = File.ReadAllText(ofd.FileName);
+                    string jsonString;
+                    if (fileContents.TrimStart().StartsWith("{"))
                     {
-                        string jsonString = sr.ReadToEnd();
-
-                        if (chkImportPass.IsChecked == true && !String.IsNullOrEmpty(txtImportPass.Text))
+                        string importError = null;
+                        while (true)
                         {
-                            string PassHash = EncDec.Sha256(txtImportPass.Text.Trim());
-                            jsonString = EncDec.Decrypt(jsonString, PassHash);
+                            var passwordDialog = new VaultPasswordWindow(false, false, importError,
+                                "Unlock Imported Accounts", "Enter the password for the file you are importing.");
+                            if (passwordDialog.ShowDialog() != true)
+                            {
+                                pnlImport.Visibility = Visibility.Collapsed;
+                                return;
+                            }
+                            string password = passwordDialog.Password;
+                            var opened = VaultWorkWindow.Run("Unlocking imported accounts...", () =>
+                            {
+                                VaultSession importedSession;
+                                string decrypted;
+                                bool matched = VaultSession.TryUnlock(fileContents, password, out importedSession, out decrypted);
+                                importedSession?.Dispose();
+                                return Tuple.Create(matched, decrypted);
+                            });
+                            if (opened.Item1)
+                            {
+                                jsonString = opened.Item2;
+                                break;
+                            }
+                            importError = "Incorrect password or damaged account file. Please try again.";
                         }
-
-                        ObservableCollection<Account> imported = JsonSerializer.Deserialize<ObservableCollection<Account>>(jsonString);
-                        for (int i = 0; i < imported.Count; i++)
-                        {
-                            accounts.Add(imported[i]);
-                        }
-                        for (int i = 0; i < accounts.Count; i++)
-                        {
-                            Account acc = accounts[i];
-                            acc.Id = i;
-                            GenerateCode(ref acc);
-                            accounts[i] = acc;
-                        }
-                        lbCodes.Items.Refresh();
-                        WriteJson();
                     }
+                    else if (chkImportPass.IsChecked == true)
+                    {
+                        if (string.IsNullOrEmpty(txtImportPass.Text))
+                            throw new InvalidDataException("Enter the password for the old export file.");
+                        string passHash = EncDec.Sha256(txtImportPass.Text.Trim());
+                        jsonString = EncDec.Decrypt(fileContents, passHash);
+                    }
+                    else
+                        jsonString = fileContents;
+
+                    var imported = JsonSerializer.Deserialize<ObservableCollection<Account>>(jsonString);
+                    if (imported == null) throw new InvalidDataException("The imported account data is invalid.");
+                    for (int i = 0; i < imported.Count; i++)
+                    {
+                        imported[i].Id = accounts.Count + i;
+                        GenerateCode(imported[i]);
+                    }
+
+                    var merged = new List<Account>(accounts);
+                    merged.AddRange(imported);
+                    string mergedJson = JsonSerializer.Serialize(merged, new JsonSerializerOptions { WriteIndented = true });
+                    VaultSession.Save(AccounsFile, vaultSession, mergedJson);
+                    foreach (Account account in imported) accounts.Add(account);
+                    MessageBox.Show("Accounts imported into the current vault.", "AuthWin",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Could not import accounts.\n\n" + ex.Message, "AuthWin",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
             ofd = null;
             pnlImport.Visibility = Visibility.Collapsed;
@@ -684,9 +803,16 @@ namespace AuthWin
         {
             txtImportPass.Visibility = Visibility.Hidden;
         }
+
+        private void WriteLog(string message)
+        {
+            string logMessage = $"{DateTime.Now}: {message}";
+            System.IO.File.AppendAllText(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\AuthWin\\log.txt", logMessage + Environment.NewLine);
+        }
+
     }
 
-    public class Account
+    public class Account : INotifyPropertyChanged
     {
         public string Name { get; set; }
         public string Issuer { get; set; }
@@ -695,8 +821,36 @@ namespace AuthWin
         public int Length { get; set; }
         public Hash HashAlgo { get; set; }
 
-        [JsonIgnore] public string Totp { get; set; }
-        [JsonIgnore] public int Seconds { get; set; }
+        private string _totp;
+        [JsonIgnore]
+        public string Totp
+        {
+            get => _totp;
+            set
+            {
+                if (_totp != value)
+                {
+                    _totp = value;
+                    OnPropertyChanged(nameof(Totp));
+                }
+            }
+        }
+        [JsonIgnore]
+        private int _seconds;
+        [JsonIgnore]
+        public int Seconds
+        {
+            get => _seconds;
+            set
+            {
+                if (_seconds != value)
+                {
+                    _seconds = value;
+                    OnPropertyChanged(nameof(Seconds));
+                    OnPropertyChanged(nameof(PieGeometry));
+                }
+            }
+        }
         [JsonIgnore] public int Id { get; set; }
 
         public enum Hash
@@ -712,5 +866,41 @@ namespace AuthWin
             Length = 6;
             HashAlgo = Hash.SHA1;
         }
+
+        [JsonIgnore]
+        public Geometry PieGeometry
+        {
+            get
+            {
+                double percent = (double)Seconds / (Duration > 0 ? Duration : 30);
+                double angle = 360 * percent;
+                return CreatePieGeometry(16, 16, 15, angle);
+            }
+        }
+
+        private Geometry CreatePieGeometry(double cx, double cy, double radius, double angle)
+        {
+            if (angle <= 0) return Geometry.Empty;
+            if (angle >= 360) angle = 359.999;
+
+            double radians = (Math.PI / 180) * (angle - 90);
+            double x = cx + radius * Math.Cos(radians);
+            double y = cy + radius * Math.Sin(radians);
+
+            bool isLargeArc = angle > 180;
+
+            var geom = new StreamGeometry();
+            using (var ctx = geom.Open())
+            {
+                ctx.BeginFigure(new System.Windows.Point(cx, cy), true, true);
+                ctx.LineTo(new System.Windows.Point(cx, cy - radius), true, false);
+                ctx.ArcTo(new System.Windows.Point(x, y), new System.Windows.Size(radius, radius), 0, isLargeArc, SweepDirection.Clockwise, true, false);
+            }
+            geom.Freeze();
+            return geom;
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }

@@ -1,0 +1,8 @@
+<Window x:Class="AuthWin.VaultWorkWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AuthWin" Width="330" Height="120"
+        ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
+        Loaded="Window_Loaded">
+    <TextBlock x:Name="txtStatus" Margin="20" VerticalAlignment="Center" />
+</Window>

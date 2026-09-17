@@ -5,13 +5,13 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:AuthWin"
         mc:Ignorable="d"
-        Title="AuthWin" Height="500" Width="500" ResizeMode="CanMinimize" WindowStartupLocation="CenterScreen" Loaded="Window_Loaded" Icon="/AuthWin.ico">
+        Title="AuthWin" Height="500" Width="500" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterScreen" Loaded="Window_Loaded" Icon="/AuthWin.ico">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"></RowDefinition>
             <RowDefinition Height="Auto"></RowDefinition>
         </Grid.RowDefinitions>
-        <ListBox Grid.Row="0" Name="lbCodes" Visibility="Visible" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" SelectionChanged="lbCodes_SelectionChanged">
+        <ListBox Grid.Row="0" Name="lbCodes" Visibility="Visible" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VirtualizingPanel.ScrollUnit="Pixel" SelectionChanged="lbCodes_SelectionChanged">
 
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
@@ -44,7 +44,12 @@
                             </StackPanel>
                             
                             <Label Grid.Row="1" Grid.Column="0" Content="{Binding Totp}" Padding="5" FontSize="24" FontWeight="Bold" Foreground="Blue" VerticalAlignment="Center"></Label>
-                            <Label Grid.Row="1" Grid.Column="1" Content="{Binding Seconds}" Padding="0" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center"></Label>
+                            <Grid Grid.Row="1" Grid.Column="1" Width="32" Height="32" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <Ellipse Fill="#EEE" />
+                                <Path x:Name="PieSlice"
+                                      Fill="DodgerBlue"
+                                      Data="{Binding PieGeometry}" />
+                            </Grid>
                             <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,2,10,0">
                                 <Image Source="/images/qr.png" Width="16" Height="16" Cursor="Hand" MouseLeftButtonUp="QR_MouseLeftButtonUp" Tag="{Binding Id}" Opacity="0.4" MouseEnter="Image_MouseEnter" MouseLeave="Image_MouseLeave"></Image>
                                 <Image Source="/images/edit.png" Width="16" Height="16" Cursor="Hand" Tag="{Binding Id}" MouseLeftButtonUp="Edit_MouseLeftButtonUp" Opacity="0.4" MouseEnter="Image_MouseEnter" MouseLeave="Image_MouseLeave" Margin="10,0,0,0"></Image>
@@ -72,16 +77,9 @@
             <Button Grid.Column="0" Grid.Row="1" Name="btnAdd" Padding="4" Margin="0,10,0,0" Click="btnAdd_Click">_Add Account</Button>
             <Button Grid.Column="1" Grid.Row="1" Name="btnImport" Padding="4" Margin="10,10,0,0" Click="btnImport_Click">_Import</Button>
             <Button Grid.Column="2" Grid.Row="1" Name="btnExport" Padding="4" Margin="10,10,0,0" Click="btnExport_Click">_Export</Button>
-            <StackPanel Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="3" Margin="0,10,0,0" Name="pnlExport" Visibility="Collapsed">
-                <StackPanel Orientation="Horizontal" Name="pnlExportPass">
-                    <CheckBox Name="chkExportPass" Checked="chkExportPass_Checked" Unchecked="chkExportPass_Unchecked" VerticalAlignment="Center">Protect with password?</CheckBox>
-                    <TextBox FontSize="14" Name="txtExportPass" Width="150" Margin="10,0,0,0" Padding="2" VerticalAlignment="Center" Visibility="Hidden"></TextBox>
-                </StackPanel>
-                <Button Name="btnExportFinal" Padding="4" Margin="0,10,0,0" Click="btnExportFinal_Click">Export Accounts</Button>
-            </StackPanel>
             <StackPanel Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="3" Margin="0,10,0,0" Name="pnlImport" Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal">
-                    <CheckBox Name="chkImportPass" Checked="chkImportPass_Checked" Unchecked="chkImportPass_Unchecked" VerticalAlignment="Center">File requires password?</CheckBox>
+                    <CheckBox Name="chkImportPass" Checked="chkImportPass_Checked" Unchecked="chkImportPass_Unchecked" VerticalAlignment="Center">Old export requires password?</CheckBox>
                     <TextBox FontSize="14" Name="txtImportPass" Width="150" Margin="10,0,0,0" Padding="2" VerticalAlignment="Center" Visibility="Hidden"></TextBox>
                 </StackPanel>
                 <Button Name="btnImportFinal" Padding="4" Margin="0,10,0,0" Click="btnImportFinal_Click">Import Accounts</Button>
@@ -124,7 +122,10 @@
                 </StackPanel>
                 <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,10,0,0">
                     <Label Padding="0">Secret</Label>
-                    <TextBox x:Name="txtSecret" FontSize="16" Margin="0,2,0,0" Padding="2"></TextBox>
+                    <DockPanel Margin="0,2,0,0">
+                        <Button x:Name="btnCopySecret" DockPanel.Dock="Right" Margin="10,0,0,0" Padding="8,2" Visibility="Collapsed" Click="btnCopySecret_Click">Copy</Button>
+                        <TextBox x:Name="txtSecret" FontSize="16" Padding="2"></TextBox>
+                    </DockPanel>
                 </StackPanel>
                 <StackPanel Grid.Row="2" Margin="0,10" Grid.ColumnSpan="2">
                     <Label Padding="0" Cursor="Hand" Name="lblAdvance" Focusable="True" MouseLeftButtonUp="lblAdvance_MouseLeftButtonUp">&#11208; A_dvance</Label>
