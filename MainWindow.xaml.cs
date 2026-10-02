@@ -47,6 +47,9 @@ namespace AuthWin
         bool EditMode = false;
         int EditIndex = -1;
         string AccounsFile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\AuthWin\\accounts.json";
+        string PrefsFile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\AuthWin\\prefs.json";
+        AccountSortMode sortMode = AccountSortMode.Added;
+        bool sortUiReady = false;
 
         public MainWindow()
         {
@@ -88,6 +91,9 @@ namespace AuthWin
                 GenerateCode(acc);
             }
             lbCodes.ItemsSource = accounts;
+            LoadSortPreference();
+            ApplySort();
+            sortUiReady = true;
             timer.Tick += timer_Tick;
             timer.Interval = new TimeSpan(0, 0, 1);
             timer.Start();
@@ -221,6 +227,7 @@ namespace AuthWin
                 GenerateCode(account);
                 account.Id = accounts.Count;
                 accounts.Add(account);
+                ApplySort();
                 WriteJson();
 
                 txtName.Text = "";
@@ -394,9 +401,10 @@ namespace AuthWin
 
         private void lbCodes_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (lbCodes.SelectedIndex > -1)
+            Account selected = lbCodes.SelectedItem as Account;
+            if (selected != null)
             {
-                Clipboard.SetText(accounts[lbCodes.SelectedIndex].Totp.Replace(" ", ""));
+                Clipboard.SetText(selected.Totp.Replace(" ", ""));
                 lblCopy.Content = "Code copied to clipboard";
                 lblCopy.Foreground = Brushes.Blue;
                 lblCopy.Background = Brushes.Yellow;
@@ -591,6 +599,7 @@ namespace AuthWin
                         acc.Id = accounts.Count;
                         GenerateCode(acc);
                         accounts.Add(acc);
+                        ApplySort();
                         WriteJson();
 
                         lbCodes.Visibility = Visibility.Visible;
@@ -620,6 +629,7 @@ namespace AuthWin
                                     GenerateCode(acc);
                                     accounts.Add(acc);
                                 }
+                                ApplySort();
                                 WriteJson();
                             }
                         }
@@ -699,6 +709,7 @@ namespace AuthWin
                 }
 
                 accounts[EditIndex].Issuer = txtIssuer.Text.Trim();
+                ApplySort();
                 lbCodes.Items.Refresh();
                 WriteJson();
 
@@ -780,6 +791,7 @@ namespace AuthWin
                     string mergedJson = JsonSerializer.Serialize(merged, new JsonSerializerOptions { WriteIndented = true });
                     VaultSession.Save(AccounsFile, vaultSession, mergedJson);
                     foreach (Account account in imported) accounts.Add(account);
+                    ApplySort();
                     MessageBox.Show("Accounts imported into the current vault.", "AuthWin",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
@@ -810,6 +822,121 @@ namespace AuthWin
             System.IO.File.AppendAllText(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\AuthWin\\log.txt", logMessage + Environment.NewLine);
         }
 
+        private void cmbSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!sortUiReady) return;
+            sortMode = IndexToSortMode(cmbSort.SelectedIndex);
+            SaveSortPreference();
+            ApplySort();
+        }
+
+        private void ApplySort()
+        {
+            ListCollectionView view = CollectionViewSource.GetDefaultView(accounts) as ListCollectionView;
+            if (view == null) return;
+            view.CustomSort = sortMode == AccountSortMode.Added ? null : new AccountDisplayComparer(sortMode);
+        }
+
+        private void LoadSortPreference()
+        {
+            try
+            {
+                if (File.Exists(PrefsFile))
+                {
+                    UiPreferences prefs = JsonSerializer.Deserialize<UiPreferences>(File.ReadAllText(PrefsFile));
+                    if (prefs != null && Enum.TryParse(prefs.SortBy, true, out AccountSortMode loaded))
+                        sortMode = loaded;
+                }
+            }
+            catch
+            {
+                sortMode = AccountSortMode.Added;
+            }
+
+            cmbSort.SelectedIndex = SortModeToIndex(sortMode);
+        }
+
+        private void SaveSortPreference()
+        {
+            try
+            {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PrefsFile));
+                var prefs = new UiPreferences { SortBy = sortMode.ToString() };
+                File.WriteAllText(PrefsFile, JsonSerializer.Serialize(prefs, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch
+            {
+            }
+        }
+
+        private static AccountSortMode IndexToSortMode(int index)
+        {
+            switch (index)
+            {
+                case 1: return AccountSortMode.Issuer;
+                case 2: return AccountSortMode.Name;
+                default: return AccountSortMode.Added;
+            }
+        }
+
+        private static int SortModeToIndex(AccountSortMode mode)
+        {
+            switch (mode)
+            {
+                case AccountSortMode.Issuer: return 1;
+                case AccountSortMode.Name: return 2;
+                default: return 0;
+            }
+        }
+
+    }
+
+    internal enum AccountSortMode
+    {
+        Added,
+        Issuer,
+        Name
+    }
+
+    internal sealed class UiPreferences
+    {
+        public string SortBy { get; set; }
+    }
+
+    internal sealed class AccountDisplayComparer : IComparer
+    {
+        private readonly AccountSortMode sortMode;
+
+        public AccountDisplayComparer(AccountSortMode sortMode)
+        {
+            this.sortMode = sortMode;
+        }
+
+        public int Compare(object x, object y)
+        {
+            Account left = x as Account;
+            Account right = y as Account;
+            if (left == null && right == null) return 0;
+            if (left == null) return -1;
+            if (right == null) return 1;
+
+            int result;
+            if (sortMode == AccountSortMode.Issuer)
+            {
+                result = string.Compare(left.Issuer, right.Issuer, StringComparison.CurrentCultureIgnoreCase);
+                if (result != 0) return result;
+                result = string.Compare(left.Name, right.Name, StringComparison.CurrentCultureIgnoreCase);
+            }
+            else
+            {
+                result = string.Compare(left.Name, right.Name, StringComparison.CurrentCultureIgnoreCase);
+                if (result != 0) return result;
+                result = string.Compare(left.Issuer, right.Issuer, StringComparison.CurrentCultureIgnoreCase);
+            }
+
+            if (result != 0) return result;
+            return left.Id.CompareTo(right.Id);
+        }
     }
 
     public class Account : INotifyPropertyChanged

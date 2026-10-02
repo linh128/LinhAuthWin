@@ -72,8 +72,16 @@
                 <RowDefinition />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Label Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" HorizontalAlignment="Left" Foreground="Gray" Padding="2" Name="lblCopy">Click on a code to copy</Label>
-            <Label Name="lblWeb" Grid.Row="0" Grid.Column="2" Foreground="Blue" Padding="2" HorizontalAlignment="Right" Cursor="Hand" MouseLeftButtonUp="lblWeb_MouseLeftButtonUp">AuthWin.com</Label>
+            <DockPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3">
+                <Label Name="lblWeb" DockPanel.Dock="Right" Foreground="Blue" Padding="2" HorizontalAlignment="Right" Cursor="Hand" MouseLeftButtonUp="lblWeb_MouseLeftButtonUp">AuthWin.com</Label>
+                <ComboBox Name="cmbSort" DockPanel.Dock="Right" Width="140" Margin="8,0,8,0" VerticalAlignment="Center" SelectionChanged="cmbSort_SelectionChanged">
+                    <ComboBoxItem IsSelected="True">Added order</ComboBoxItem>
+                    <ComboBoxItem>Issuer name</ComboBoxItem>
+                    <ComboBoxItem>Account name</ComboBoxItem>
+                </ComboBox>
+                <Label DockPanel.Dock="Right" Padding="2" VerticalAlignment="Center" Foreground="Gray">Sort</Label>
+                <Label HorizontalAlignment="Left" Foreground="Gray" Padding="2" Name="lblCopy">Click on a code to copy</Label>
+            </DockPanel>
             <Button Grid.Column="0" Grid.Row="1" Name="btnAdd" Padding="4" Margin="0,10,0,0" Click="btnAdd_Click">_Add Account</Button>
             <Button Grid.Column="1" Grid.Row="1" Name="btnImport" Padding="4" Margin="10,10,0,0" Click="btnImport_Click">_Import</Button>
             <Button Grid.Column="2" Grid.Row="1" Name="btnExport" Padding="4" Margin="10,10,0,0" Click="btnExport_Click">_Export</Button>
